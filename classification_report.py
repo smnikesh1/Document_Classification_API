@@ -7,86 +7,82 @@ from app.classifier import classify_document
 
 
 # ============================================================
-# 1. DATASET LOCATION
+# 1. DATASET PATHS
 # ============================================================
 
-DATASET_DIR = Path("dataset")
-
-
-# ============================================================
-# 2. NORMAL DATASET FOLDERS
-# ============================================================
+dataset_path = Path("dataset")
 
 folders = {
-    "aadhar": DATASET_DIR / "aadhar",
-    "pan": DATASET_DIR / "pan",
-    "driving_license": DATASET_DIR / "driving_license",
-    "unknown": DATASET_DIR / "unknown"
+    "aadhar": dataset_path / "aadhar",
+    "pan": dataset_path / "pan",
+    "driving_license": dataset_path / "driving_license",
+    "unknown": dataset_path / "unknown",
+    "hard_test": dataset_path / "hard_test"
 }
 
 
 # ============================================================
-# 3. STORE ALL RESULTS
+# 2. STORE ALL RESULTS
 # ============================================================
 
 results = []
 
 
 # ============================================================
-# 4. PROCESS NORMAL DATASET
+# 3. TEST NORMAL DATASETS
 # ============================================================
 
-for actual_class, folder in folders.items():
+for actual_label in ["aadhar", "pan", "driving_license", "unknown"]:
 
-    print(f"\nProcessing {actual_class.upper()} documents...")
+    folder = folders[actual_label]
 
-    for file_path in folder.glob("*.png"):
+    for file_path in folder.glob("*"):
 
-        print(f"Processing: {file_path.name}")
+        try:
 
-        # ----------------------------------------------------
-        # OCR
-        # ----------------------------------------------------
+            # OCR
+            extracted_text = extract_text(str(file_path))
 
-        raw_text = extract_text(str(file_path))
+            # Clean OCR text
+            cleaned_text = clean_text(extracted_text)
 
-        # ----------------------------------------------------
-        # Clean OCR text
-        # ----------------------------------------------------
+            # Classification
+            result = classify_document(cleaned_text)
 
-        cleaned_text = clean_text(raw_text)
+            predicted = result["classified"]
+            confidence = result["confidence"]
 
-        # ----------------------------------------------------
-        # Classification
-        # ----------------------------------------------------
+            # Check prediction
+            if actual_label == predicted:
+                prediction_result = "Correct"
+            else:
+                prediction_result = "Wrong"
 
-        prediction = classify_document(cleaned_text)
+            results.append({
+                "File": file_path.name,
+                "Dataset": actual_label,
+                "Actual": actual_label,
+                "Predicted": predicted,
+                "Confidence": confidence,
+                "Result": prediction_result
+            })
 
-        predicted_class = prediction["classified"]
-        confidence = prediction["confidence"]
+        except Exception as e:
 
-        # ----------------------------------------------------
-        # Store result
-        # ----------------------------------------------------
+            print(f"Error processing {file_path.name}: {e}")
 
-        results.append({
-            "File Name": file_path.name,
-            "Actual Value": actual_class,
-            "Predicted Value": predicted_class,
-            "Confidence": confidence,
-            "OCR Text": raw_text
-        })
+            results.append({
+                "File": file_path.name,
+                "Dataset": actual_label,
+                "Actual": actual_label,
+                "Predicted": "ERROR",
+                "Confidence": 0,
+                "Result": "Error"
+            })
 
 
 # ============================================================
-# 5. HARD TEST DATASET
-# ============================================================
-
-hard_test_folder = DATASET_DIR / "hard_test"
-
-
-# ============================================================
-# 6. EXPECTED LABEL FOR EACH HARD TEST FILE
+# 4. HARD TEST DATASET LABELS
 # ============================================================
 
 hard_test_labels = {
@@ -119,313 +115,264 @@ hard_test_labels = {
 
 
 # ============================================================
-# 7. PROCESS HARD TEST DOCUMENTS
+# 5. TEST HARD DATASET
 # ============================================================
 
-print("\nProcessing HARD TEST documents...")
+hard_test_folder = folders["hard_test"]
 
 
-for file_path in hard_test_folder.glob("*.png"):
+for file_name, actual_label in hard_test_labels.items():
 
-    print(f"Processing: {file_path.name}")
+    file_path = hard_test_folder / file_name
 
-    # --------------------------------------------------------
-    # OCR
-    # --------------------------------------------------------
+    try:
 
-    raw_text = extract_text(str(file_path))
+        # OCR
+        extracted_text = extract_text(str(file_path))
 
-    # --------------------------------------------------------
-    # Clean OCR text
-    # --------------------------------------------------------
+        # Clean text
+        cleaned_text = clean_text(extracted_text)
 
-    cleaned_text = clean_text(raw_text)
+        # Classification
+        result = classify_document(cleaned_text)
 
-    # --------------------------------------------------------
-    # Classification
-    # --------------------------------------------------------
+        predicted = result["classified"]
+        confidence = result["confidence"]
 
-    prediction = classify_document(cleaned_text)
+        # Check prediction
+        if actual_label == predicted:
+            prediction_result = "Correct"
+        else:
+            prediction_result = "Wrong"
 
-    predicted_class = prediction["classified"]
-    confidence = prediction["confidence"]
+        results.append({
+            "File": file_name,
+            "Dataset": "hard_test",
+            "Actual": actual_label,
+            "Predicted": predicted,
+            "Confidence": confidence,
+            "Result": prediction_result
+        })
 
-    # --------------------------------------------------------
-    # Get actual class
-    # --------------------------------------------------------
+    except Exception as e:
 
-    actual_class = hard_test_labels[file_path.name]
+        print(f"Error processing {file_name}: {e}")
 
-    # --------------------------------------------------------
-    # Store result
-    # --------------------------------------------------------
-
-    results.append({
-        "File Name": file_path.name,
-        "Actual Value": actual_class,
-        "Predicted Value": predicted_class,
-        "Confidence": confidence,
-        "OCR Text": raw_text
-    })
+        results.append({
+            "File": file_name,
+            "Dataset": "hard_test",
+            "Actual": actual_label,
+            "Predicted": "ERROR",
+            "Confidence": 0,
+            "Result": "Error"
+        })
 
 
 # ============================================================
-# 8. CREATE DATAFRAME
+# 6. CREATE DATAFRAME
 # ============================================================
 
 df = pd.DataFrame(results)
 
 
 # ============================================================
-# 9. CHECK TOTAL DOCUMENTS
+# 7. CALCULATE BASIC METRICS
 # ============================================================
 
 total = len(df)
 
+correct = (df["Actual"] == df["Predicted"]).sum()
+
+wrong = (
+    (df["Actual"] != df["Predicted"]) &
+    (df["Predicted"] != "ERROR")
+).sum()
+
+errors = (df["Predicted"] == "ERROR").sum()
+
+
+# Accuracy
+
+accuracy = correct / total if total > 0 else 0
+
 
 # ============================================================
-# 10. CALCULATE CORRECT PREDICTIONS
+# 8. CALCULATE WEIGHTED PRECISION / RECALL / F1
 # ============================================================
 
-correct = sum(
-    df["Actual Value"] == df["Predicted Value"]
+labels = sorted(
+    set(df["Actual"])
+)
+
+
+weighted_precision = 0
+weighted_recall = 0
+weighted_f1 = 0
+
+
+for label in labels:
+
+    # Number of actual documents belonging to this class
+    actual_count = (
+        df["Actual"] == label
+    ).sum()
+
+
+    # True positives
+    true_positive = (
+        (df["Actual"] == label) &
+        (df["Predicted"] == label)
+    ).sum()
+
+
+    # Number predicted as this class
+    predicted_count = (
+        df["Predicted"] == label
+    ).sum()
+
+
+    # Precision
+    if predicted_count > 0:
+
+        class_precision = (
+            true_positive /
+            predicted_count
+        )
+
+    else:
+
+        class_precision = 0
+
+
+    # Recall
+    if actual_count > 0:
+
+        class_recall = (
+            true_positive /
+            actual_count
+        )
+
+    else:
+
+        class_recall = 0
+
+
+    # F1 Score
+    if (
+        class_precision +
+        class_recall
+    ) > 0:
+
+        class_f1 = (
+            2 *
+            class_precision *
+            class_recall
+        ) / (
+            class_precision +
+            class_recall
+        )
+
+    else:
+
+        class_f1 = 0
+
+
+    # Weighted values
+    weighted_precision += (
+        class_precision *
+        actual_count
+    )
+
+    weighted_recall += (
+        class_recall *
+        actual_count
+    )
+
+    weighted_f1 += (
+        class_f1 *
+        actual_count
+    )
+
+
+# Final weighted metrics
+
+precision = (
+    weighted_precision / total
+    if total > 0 else 0
+)
+
+recall = (
+    weighted_recall / total
+    if total > 0 else 0
+)
+
+f1 = (
+    weighted_f1 / total
+    if total > 0 else 0
 )
 
 
 # ============================================================
-# 11. CALCULATE WRONG PREDICTIONS
-# ============================================================
-
-wrong = total - correct
-
-
-# ============================================================
-# 12. CALCULATE ACCURACY
-# ============================================================
-
-if total > 0:
-
-    accuracy = correct / total
-
-else:
-
-    accuracy = 0
-
-
-# ============================================================
-# 13. CLASSES
-# ============================================================
-
-classes = [
-    "aadhar",
-    "pan",
-    "driving_license",
-    "unknown"
-]
-
-
-# ============================================================
-# 14. STORE METRIC VALUES
-# ============================================================
-
-precision_values = []
-recall_values = []
-f1_values = []
-support_values = []
-
-
-# ============================================================
-# 15. CALCULATE PRECISION / RECALL / F1
-# ============================================================
-
-for class_name in classes:
-
-    # --------------------------------------------------------
-    # Actual documents belonging to this class
-    # --------------------------------------------------------
-
-    actual_positive = sum(
-        df["Actual Value"] == class_name
-    )
-
-
-    # --------------------------------------------------------
-    # True Positive
-    # --------------------------------------------------------
-
-    true_positive = sum(
-        (df["Actual Value"] == class_name)
-        &
-        (df["Predicted Value"] == class_name)
-    )
-
-
-    # --------------------------------------------------------
-    # False Positive
-    # --------------------------------------------------------
-
-    false_positive = sum(
-        (df["Actual Value"] != class_name)
-        &
-        (df["Predicted Value"] == class_name)
-    )
-
-
-    # --------------------------------------------------------
-    # False Negative
-    # --------------------------------------------------------
-
-    false_negative = sum(
-        (df["Actual Value"] == class_name)
-        &
-        (df["Predicted Value"] != class_name)
-    )
-
-
-    # ========================================================
-    # PRECISION
-    # ========================================================
-
-    if true_positive + false_positive > 0:
-
-        precision = true_positive / (
-            true_positive + false_positive
-        )
-
-    else:
-
-        precision = 0
-
-
-    # ========================================================
-    # RECALL
-    # ========================================================
-
-    if true_positive + false_negative > 0:
-
-        recall = true_positive / (
-            true_positive + false_negative
-        )
-
-    else:
-
-        recall = 0
-
-
-    # ========================================================
-    # F1 SCORE
-    # ========================================================
-
-    if precision + recall > 0:
-
-        f1 = (
-            2 * precision * recall
-            / (precision + recall)
-        )
-
-    else:
-
-        f1 = 0
-
-
-    # --------------------------------------------------------
-    # Store values
-    # --------------------------------------------------------
-
-    precision_values.append(precision)
-    recall_values.append(recall)
-    f1_values.append(f1)
-    support_values.append(actual_positive)
-
-
-# ============================================================
-# 16. WEIGHTED METRICS
-# ============================================================
-
-total_support = sum(support_values)
-
-
-if total_support > 0:
-
-    weighted_precision = sum(
-        precision * support
-        for precision, support
-        in zip(
-            precision_values,
-            support_values
-        )
-    ) / total_support
-
-
-    weighted_recall = sum(
-        recall * support
-        for recall, support
-        in zip(
-            recall_values,
-            support_values
-        )
-    ) / total_support
-
-
-    weighted_f1 = sum(
-        f1 * support
-        for f1, support
-        in zip(
-            f1_values,
-            support_values
-        )
-    ) / total_support
-
-else:
-
-    weighted_precision = 0
-    weighted_recall = 0
-    weighted_f1 = 0
-
-
-# ============================================================
-# 17. ADD RESULT STATUS
-# ============================================================
-
-df["Status"] = df.apply(
-    lambda row:
-    "Correct"
-    if row["Actual Value"] == row["Predicted Value"]
-    else "Wrong",
-    axis=1
-)
-
-
-# ============================================================
-# 18. CREATE SUMMARY TABLE
+# 9. CREATE SUMMARY SHEET
 # ============================================================
 
 summary = pd.DataFrame({
 
     "Metric": [
+
         "Total Documents",
+
         "Correct Predictions",
+
         "Wrong Predictions",
+
+        "Processing Errors",
+
         "Accuracy",
+
         "Precision",
+
         "Recall",
+
         "F1 Score"
+
     ],
 
     "Value": [
+
         total,
+
         correct,
+
         wrong,
-        accuracy,
-        weighted_precision,
-        weighted_recall,
-        weighted_f1
+
+        errors,
+
+        f"{accuracy * 100:.2f}%",
+
+        f"{precision * 100:.2f}%",
+
+        f"{recall * 100:.2f}%",
+
+        f"{f1 * 100:.2f}%"
+
     ]
+
 })
 
 
 # ============================================================
-# 19. CREATE EXCEL REPORT
+# 10. CREATE WRONG PREDICTIONS SHEET
+# ============================================================
+
+wrong_predictions = df[
+    (df["Actual"] != df["Predicted"]) &
+    (df["Predicted"] != "ERROR")
+].copy()
+
+
+# ============================================================
+# 11. CREATE EXCEL REPORT
 # ============================================================
 
 output_file = "classification_report.xlsx"
@@ -436,112 +383,73 @@ with pd.ExcelWriter(
     engine="openpyxl"
 ) as writer:
 
-    # --------------------------------------------------------
-    # Document Results Sheet
-    # --------------------------------------------------------
-
-    df.to_excel(
-        writer,
-        sheet_name="Document Results",
-        index=False
-    )
-
-    # --------------------------------------------------------
-    # Metrics Sheet
-    # --------------------------------------------------------
-
+    # Summary
     summary.to_excel(
         writer,
-        sheet_name="Metrics",
+        sheet_name="Summary",
+        index=False
+    )
+
+    # All predictions
+    df.to_excel(
+        writer,
+        sheet_name="Prediction Details",
+        index=False
+    )
+
+    # Wrong predictions
+    wrong_predictions.to_excel(
+        writer,
+        sheet_name="Wrong Predictions",
         index=False
     )
 
 
 # ============================================================
-# 20. PRINT CLASSIFICATION REPORT
+# 12. PRINT REPORT
 # ============================================================
 
-print("\n")
-print("==============================================")
-print("          CLASSIFICATION REPORT")
-print("==============================================")
+print()
+print("=" * 60)
+print("DOCUMENT CLASSIFICATION REPORT")
+print("=" * 60)
 
-
-print(
-    df[
-        [
-            "File Name",
-            "Actual Value",
-            "Predicted Value",
-            "Confidence",
-            "Status"
-        ]
-    ].to_string(index=False)
-)
-
-
-# ============================================================
-# 21. PRINT WRONG PREDICTIONS ONLY
-# ============================================================
-
-wrong_documents = df[
-    df["Actual Value"] != df["Predicted Value"]
-]
-
-
-print("\n")
-print("==============================================")
-print("          WRONG PREDICTIONS")
-print("==============================================")
-
-
-if len(wrong_documents) > 0:
-
-    print(
-        wrong_documents[
-            [
-                "File Name",
-                "Actual Value",
-                "Predicted Value",
-                "Confidence"
-            ]
-        ].to_string(index=False)
-    )
-
-else:
-
-    print("No wrong predictions.")
-
-
-# ============================================================
-# 22. PRINT METRICS
-# ============================================================
-
-print("\n")
-print("==============================================")
-print("                 METRICS")
-print("==============================================")
-
+print()
 
 print(f"Total Documents : {total}")
+
 print(f"Correct         : {correct}")
+
 print(f"Wrong           : {wrong}")
 
-print(f"Accuracy        : {accuracy:.2%}")
-print(f"Precision       : {weighted_precision:.2%}")
-print(f"Recall          : {weighted_recall:.2%}")
-print(f"F1 Score        : {weighted_f1:.2%}")
+print(f"Errors          : {errors}")
 
+print()
 
-# ============================================================
-# 23. EXCEL CONFIRMATION
-# ============================================================
+print(
+    f"Accuracy        : {accuracy * 100:.2f}%"
+)
 
-print("\n")
-print("==============================================")
+print(
+    f"Precision       : {precision * 100:.2f}%"
+)
+
+print(
+    f"Recall          : {recall * 100:.2f}%"
+)
+
+print(
+    f"F1 Score        : {f1 * 100:.2f}%"
+)
+
+print()
+
+print("=" * 60)
 
 print(
     f"Excel report created: {output_file}"
 )
 
-print("==============================================")
+print("=" * 60)
+
+print()
