@@ -22,3 +22,5 @@ models/*.h5
 models/*.keras
 models/*.pth
 models/*.pt
+models/
+uploads/
