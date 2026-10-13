@@ -1,0 +1,14 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+venv/
+venv*/
+tf-venv/
+dataset/
+test_dataset/
+dataset.zip
+uploads/
+.git
+.gitignore

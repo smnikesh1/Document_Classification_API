@@ -1,0 +1,11 @@
+services:
+  classification-api:
+    build: .
+    container_name: document_classification_service
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    volumes:
+      - ./uploads:/app/uploads
+    restart: unless-stopped
