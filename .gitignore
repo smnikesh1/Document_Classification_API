@@ -1,5 +1,24 @@
+# Virtual Environments
 venv/
-__pycache__/
-*.pyc
+venv*/
+tf-venv/
 .env
-uploads/
+
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Large Datasets and Archives
+dataset/
+test_dataset/
+dataset.zip
+*.jpg
+*.png
+
+# Trained model weights / large checkpoints
+models/*.h5
+models/*.keras
+models/*.pth
+models/*.pt
