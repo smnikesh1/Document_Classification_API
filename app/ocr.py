@@ -1,54 +1,125 @@
+
+import os
 import pytesseract
-from PIL import Image
+
+from PIL import Image, ImageOps, ImageEnhance
 from pdf2image import convert_from_path
 
 
-# -----------------------------------
-# Tesseract OCR location
-# -----------------------------------
+
+
 pytesseract.pytesseract.tesseract_cmd = (
     r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 )
 
 
-# -----------------------------------
-# Poppler location
-# -----------------------------------
-POPPLER_PATH = (
-    r"C:\Users\SAIRAM NIKESH\AppData\Local\Microsoft\WinGet\Packages"
-    r"\oschwartz10612.Poppler_Microsoft.Winget.Source_8wekyb3d8bbwe"
-    r"\poppler-25.07.0\Library\bin"
-)
+# Extract text from an image
 
 
-# -----------------------------------
-# OCR function
-# -----------------------------------
-def extract_text(file_path):
+def extract_text_from_image(image_path: str) -> str:
+    """
+    Extract text from an image using Tesseract OCR.
 
-    # If the file is a PDF
-    if file_path.lower().endswith(".pdf"):
-
-        # Convert PDF pages into images
-        pages = convert_from_path(
-            file_path,
-            poppler_path=POPPLER_PATH
+    Supported formats include PNG, JPG, JPEG, and TIFF.
+    """
+    if not os.path.isfile(image_path):
+        raise FileNotFoundError(
+            f"Image file not found: {image_path}"
         )
 
-        text = ""
+    try:
+        with Image.open(image_path) as original_image:
+            image = ImageOps.exif_transpose(original_image)
+            image = image.convert("RGB")
 
-        # Run OCR on every page
-        for page in pages:
-            text += pytesseract.image_to_string(page)
-            text += "\n"
+            # Convert to grayscale for OCR
+            image = ImageOps.grayscale(image)
 
-        return text
+            # Improve contrast
+            image = ImageEnhance.Contrast(image).enhance(1.5)
 
-    # If the file is JPG/PNG
-    else:
+            # OCR configuration: assume a block of text
+            config = "--oem 3 --psm 6"
 
-        image = Image.open(file_path)
+            text = pytesseract.image_to_string(
+                image,
+                lang="eng",
+                config=config
+            )
 
-        text = pytesseract.image_to_string(image)
+            return text.strip()
 
-        return text
+    except pytesseract.TesseractNotFoundError as error:
+        raise RuntimeError(
+            "Tesseract OCR was not found. "
+            "Check the installation path in app/ocr.py."
+        ) from error
+
+
+# 
+# Extract text from a PDF
+
+def extract_text_from_pdf(pdf_path: str) -> str:
+    """
+    Convert PDF pages into images and extract their text.
+
+    Note: pdf2image also requires Poppler on Windows.
+    """
+    if not os.path.isfile(pdf_path):
+        raise FileNotFoundError(
+            f"PDF file not found: {pdf_path}"
+        )
+
+    try:
+        pages = convert_from_path(pdf_path)
+        extracted_pages = []
+
+        for page_number, page in enumerate(pages, start=1):
+            page = page.convert("RGB")
+
+            text = pytesseract.image_to_string(
+                page,
+                lang="eng",
+                config="--oem 3 --psm 6"
+            )
+
+            extracted_pages.append(
+                f"--- Page {page_number} ---\n{text.strip()}"
+            )
+
+        return "\n\n".join(extracted_pages).strip()
+
+    except Exception as error:
+        raise RuntimeError(
+            f"Could not extract text from PDF: {error}"
+        ) from error
+
+
+# 
+# Main function used by the project
+
+def extract_text(file_path: str) -> str:
+    """
+    Automatically select image or PDF OCR based on file type.
+    """
+    if not os.path.isfile(file_path):
+        raise FileNotFoundError(
+            f"File not found: {file_path}"
+        )
+
+    extension = os.path.splitext(file_path)[1].lower()
+
+    image_extensions = {
+        ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"
+    }
+
+    if extension in image_extensions:
+        return extract_text_from_image(file_path)
+
+    if extension == ".pdf":
+        return extract_text_from_pdf(file_path)
+
+    raise ValueError(
+        f"Unsupported file format: {extension}. "
+        "Use an image or PDF file."
+    )

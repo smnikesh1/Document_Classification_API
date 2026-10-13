@@ -1,46 +1,61 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+
 from pathlib import Path
 import shutil
+import uuid
 
-from app.ocr import extract_text
-from app.cleaner import clean_text
-from app.classifier import classify_document
+import requests
+from fastapi import FastAPI, UploadFile, File, HTTPException
 
+app = FastAPI(title="Document Upload API")
 
-app = FastAPI(title="Document Classification API")
-
-
-UPLOAD_DIR = Path("uploads")
+BASE_DIR = Path(__file__).resolve().parent
+UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+
+ALLOWED_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+}
+
+CLASSIFICATION_URL = "http://127.0.0.1:8001/classify"
+
+
+@app.get("/health")
+def health():
+    return {"status": "healthy", "service": "upload"}
 
 
 @app.post("/classify")
 async def classify(file: UploadFile = File(...)):
+    extension = ALLOWED_TYPES.get(file.content_type)
 
-    allowed_types = [
-        "image/jpeg",
-        "image/png",
-        "image/jpg",
-        "application/pdf"
-    ]
-
-    if file.content_type not in allowed_types:
+    if extension is None:
         raise HTTPException(
             status_code=400,
-            detail="Only PDF, JPG and PNG files are allowed"
+            detail="Please upload a JPG or PNG image.",
         )
 
-    file_path = UPLOAD_DIR / file.filename
+    file_path = UPLOAD_DIR / f"{uuid.uuid4().hex}{extension}"
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    try:
+        with file_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
 
-    extracted_text = extract_text(str(file_path))
+        response = requests.post(
+            CLASSIFICATION_URL,
+            json={"image_path": str(file_path.resolve())},
+            timeout=120,
+        )
+        response.raise_for_status()
 
-    cleaned_text = clean_text(extracted_text)
-    result = classify_document(cleaned_text)
+        return response.json()
 
-    return {
-        "classified": result["classified"],
-        "confidence": result["confidence"]
-    }
+    except requests.RequestException as error:
+        print(f"Classification service error: {error}")
+        raise HTTPException(
+            status_code=502,
+            detail="The classification service is unavailable.",
+        )
+    finally:
+        file_path.unlink(missing_ok=True)
+        await file.close()
